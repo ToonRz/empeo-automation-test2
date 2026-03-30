@@ -53,4 +53,4 @@ npm run test:ui
 npm run report
 ```
 
-ถ้าต้องการแนบวิดีโอเพิ่ม สามารถอัดขณะรัน `npm run test:headed` ได้ทันที
+ถ้าต้องการแนบวิดีโอเพิ่ม สามารถอัดขณะรัน `npm run test:headed`
