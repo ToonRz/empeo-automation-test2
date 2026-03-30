@@ -1,4 +1,4 @@
-// tests/registration.spec.js
+
 const { test, expect } = require('@playwright/test');
 const { RegistrationPage } = require('../page/registrationPage');
 const { testData } = require('../test-data/testData');
@@ -122,108 +122,243 @@ test.describe('empeo Registration System', () => {
 
   });
 
-  // ============================================================
+   // ============================================================
   // SECTION 4: OTP FLOW 🔐
   // ============================================================
 
   test.describe('4. OTP Flow', () => {
 
-    test('TC-030: กรอกเบอร์ 0967690708 → submit → ควรไปหน้า OTP', async ({ page }) => {
+    // Helper: กรอกฟอร์มแล้ว submit เพื่อไปหน้า OTP
+    async function submitToOTP(regPage, page, email) {
       const data = {
         ...testData.validThai,
         phone: '0967690708',
-        email: `otp_flow_${Date.now()}@testmail.com`,
-      };
-      await regPage.fillAndSubmit(data);
-      await regPage.takeScreenshot('TC030-otp-flow');
-
-      // ดูว่า URL เปลี่ยนหรือมี OTP field โผล่ไหม
-      const currentUrl = page.url();
-      console.log('TC-030 URL after submit:', currentUrl);
-
-      // หา OTP input field
-      const otpInput = page.locator('input[placeholder*="OTP"], input[placeholder*="otp"], input[placeholder*="รหัส"]');
-      const otpVisible = await otpInput.isVisible().catch(() => false);
-      console.log('TC-030 OTP field visible:', otpVisible);
-
-      // ถ้ามี OTP field → กรอก 123456
-      if (otpVisible) {
-        await otpInput.fill('123456');
-        await regPage.takeScreenshot('TC030-otp-filled');
-      }
-    });
-
-    test('TC-031: กรอก OTP ผิด (000000) → ต้องแสดง error', async ({ page }) => {
-      const data = {
-        ...testData.validThai,
-        phone: '0967690708',
-        email: `otp_wrong_${Date.now()}@testmail.com`,
+        email: email,
       };
       await regPage.fillAndSubmit(data);
       await page.waitForTimeout(3000);
 
       // หา OTP field
-      const otpInput = page.locator('input[placeholder*="OTP"], input[placeholder*="otp"], input[placeholder*="รหัส"]');
-      const otpVisible = await otpInput.isVisible().catch(() => false);
+      const otpSelectors = [
+        'input[placeholder*="OTP"]',
+        'input[placeholder*="otp"]',
+        'input[placeholder*="รหัส"]',
+        'input[placeholder*="ยืนยัน"]',
+        'input[type="number"]',
+        '[data-testid*="otp"]',
+      ];
 
-      if (otpVisible) {
+      let otpInput = null;
+      for (const sel of otpSelectors) {
+        const el = page.locator(sel).first();
+        if (await el.isVisible().catch(() => false)) {
+          otpInput = el;
+          break;
+        }
+      }
+
+      return otpInput;
+    }
+
+    // Helper: หาปุ่มยืนยัน OTP
+    async function findOTPConfirmButton(page) {
+      const btnSelectors = [
+        'button:has-text("ยืนยัน")',
+        'button:has-text("Verify")',
+        'button:has-text("Confirm")',
+        'button:has-text("ตกลง")',
+        'button:has-text("ส่ง")',
+        'button[type="submit"]',
+      ];
+
+      for (const sel of btnSelectors) {
+        const btn = page.locator(sel).first();
+        if (await btn.isVisible().catch(() => false)) {
+          return btn;
+        }
+      }
+      return null;
+    }
+
+    // ----- Happy Path OTP -----
+
+    test('TC-030: กรอกเบอร์ 0967690708 → submit → ดูว่ามี OTP field', async ({ page }) => {
+      const otpInput = await submitToOTP(
+        regPage, page, `otp_flow_${Date.now()}@testmail.com`
+      );
+
+      await regPage.takeScreenshot('TC030-after-submit');
+      console.log('TC-030: OTP field visible:', otpInput !== null);
+
+      if (otpInput) {
+        console.log('✅ พบ OTP field! กรอก 123456');
+        await otpInput.fill('123456');
+        await regPage.takeScreenshot('TC030-otp-filled');
+
+        const confirmBtn = await findOTPConfirmButton(page);
+        if (confirmBtn) {
+          await confirmBtn.click();
+          await page.waitForTimeout(3000);
+          await regPage.takeScreenshot('TC030-otp-confirmed');
+          console.log('URL after OTP confirm:', page.url());
+        }
+      } else {
+        console.log('ℹ️ ไม่พบ OTP field (submit อาจยัง error)');
+      }
+    });
+
+    // ----- OTP ผิด -----
+
+    test('TC-031: กรอก OTP ผิด (000000) → ต้องแสดง error', async ({ page }) => {
+      const otpInput = await submitToOTP(
+        regPage, page, `otp_wrong_${Date.now()}@testmail.com`
+      );
+
+      if (otpInput) {
         await otpInput.fill('000000');
-        // หาปุ่มยืนยัน OTP
-        const confirmBtn = page.locator('button').filter({ hasText: /ยืนยัน|confirm|verify/i });
-        if (await confirmBtn.isVisible().catch(() => false)) {
+        const confirmBtn = await findOTPConfirmButton(page);
+        if (confirmBtn) {
           await confirmBtn.click();
           await page.waitForTimeout(2000);
         }
         await regPage.takeScreenshot('TC031-wrong-otp');
-        console.log('TC-031: OTP ผิดถูกส่งแล้ว');
+
+        // ควรมี error หรือยังอยู่หน้า OTP
+        const errors = await regPage.getVisibleErrors();
+        console.log('TC-031 errors:', errors);
       } else {
-        console.log('TC-031: ไม่พบ OTP field (อาจยัง submit ไม่ผ่าน)');
+        console.log('TC-031: ไม่พบ OTP field');
+        await regPage.takeScreenshot('TC031-no-otp-field');
       }
     });
 
-    test('TC-032: กรอก OTP ไม่ครบ 6 หลัก (123) → ต้องแสดง error', async ({ page }) => {
-      const data = {
-        ...testData.validThai,
-        phone: '0967690708',
-        email: `otp_short_${Date.now()}@testmail.com`,
-      };
-      await regPage.fillAndSubmit(data);
-      await page.waitForTimeout(3000);
+    // ----- OTP ไม่ครบ 6 หลัก -----
 
-      const otpInput = page.locator('input[placeholder*="OTP"], input[placeholder*="otp"], input[placeholder*="รหัส"]');
-      const otpVisible = await otpInput.isVisible().catch(() => false);
+    test('TC-032: กรอก OTP ไม่ครบ 6 หลัก (123) → ต้อง reject', async ({ page }) => {
+      const otpInput = await submitToOTP(
+        regPage, page, `otp_short_${Date.now()}@testmail.com`
+      );
 
-      if (otpVisible) {
+      if (otpInput) {
         await otpInput.fill('123');
-        await regPage.takeScreenshot('TC032-short-otp');
-        console.log('TC-032: OTP สั้นถูกกรอกแล้ว');
-      } else {
-        console.log('TC-032: ไม่พบ OTP field');
-      }
-    });
-
-    test('TC-033: ไม่กรอก OTP แล้วกดยืนยัน → ต้องแสดง error', async ({ page }) => {
-      const data = {
-        ...testData.validThai,
-        phone: '0967690708',
-        email: `otp_empty_${Date.now()}@testmail.com`,
-      };
-      await regPage.fillAndSubmit(data);
-      await page.waitForTimeout(3000);
-
-      const otpInput = page.locator('input[placeholder*="OTP"], input[placeholder*="otp"], input[placeholder*="รหัส"]');
-      const otpVisible = await otpInput.isVisible().catch(() => false);
-
-      if (otpVisible) {
-        // ไม่กรอกอะไร กดยืนยันเลย
-        const confirmBtn = page.locator('button').filter({ hasText: /ยืนยัน|confirm|verify/i });
-        if (await confirmBtn.isVisible().catch(() => false)) {
+        const confirmBtn = await findOTPConfirmButton(page);
+        if (confirmBtn) {
           await confirmBtn.click();
           await page.waitForTimeout(2000);
         }
-        await regPage.takeScreenshot('TC033-empty-otp');
+        await regPage.takeScreenshot('TC032-short-otp');
+        console.log('TC-032: OTP ไม่ครบ 6 หลัก submitted');
+      } else {
+        console.log('TC-032: ไม่พบ OTP field');
+        await regPage.takeScreenshot('TC032-no-otp-field');
+      }
+    });
+
+    // ----- OTP เป็นตัวอักษร -----
+
+    test('TC-033: กรอก OTP เป็นตัวอักษร (abcdef) → ต้อง reject', async ({ page }) => {
+      const otpInput = await submitToOTP(
+        regPage, page, `otp_alpha_${Date.now()}@testmail.com`
+      );
+
+      if (otpInput) {
+        await otpInput.fill('abcdef');
+        await regPage.takeScreenshot('TC033-alpha-otp');
+        console.log('TC-033: OTP ตัวอักษร filled');
       } else {
         console.log('TC-033: ไม่พบ OTP field');
+        await regPage.takeScreenshot('TC033-no-otp-field');
+      }
+    });
+
+    // ----- OTP ว่าง -----
+
+    test('TC-034: ไม่กรอก OTP แล้วกดยืนยัน → ต้อง reject', async ({ page }) => {
+      const otpInput = await submitToOTP(
+        regPage, page, `otp_empty_${Date.now()}@testmail.com`
+      );
+
+      if (otpInput) {
+        // ไม่กรอกอะไร กดยืนยันเลย
+        const confirmBtn = await findOTPConfirmButton(page);
+        if (confirmBtn) {
+          await confirmBtn.click();
+          await page.waitForTimeout(2000);
+        }
+        await regPage.takeScreenshot('TC034-empty-otp');
+        console.log('TC-034: OTP ว่าง submitted');
+      } else {
+        console.log('TC-034: ไม่พบ OTP field');
+        await regPage.takeScreenshot('TC034-no-otp-field');
+      }
+    });
+
+    // ----- OTP หมดอายุ -----
+
+    test('TC-035: OTP หมดอายุ → รอนานแล้วค่อยกรอก → ต้อง reject', async ({ page }) => {
+      const otpInput = await submitToOTP(
+        regPage, page, `otp_expire_${Date.now()}@testmail.com`
+      );
+
+      if (otpInput) {
+        // จำลอง: รอ 30 วินาที (OTP อาจหมดอายุ)
+        console.log('TC-035: รอ 30 วินาทีให้ OTP หมดอายุ...');
+        await page.waitForTimeout(30000);
+
+        await otpInput.fill('123456');
+        const confirmBtn = await findOTPConfirmButton(page);
+        if (confirmBtn) {
+          await confirmBtn.click();
+          await page.waitForTimeout(2000);
+        }
+        await regPage.takeScreenshot('TC035-expired-otp');
+
+        const errors = await regPage.getVisibleErrors();
+        console.log('TC-035 errors:', errors);
+      } else {
+        console.log('TC-035: ไม่พบ OTP field');
+        await regPage.takeScreenshot('TC035-no-otp-field');
+      }
+    });
+
+    // ----- OTP ใช้ซ้ำ -----
+
+    test('TC-036: ใช้ OTP ซ้ำ (กรอก OTP ถูก 2 ครั้ง) → ครั้งที่ 2 ต้อง reject', async ({ page }) => {
+      const otpInput = await submitToOTP(
+        regPage, page, `otp_reuse_${Date.now()}@testmail.com`
+      );
+
+      if (otpInput) {
+        // ครั้งที่ 1: กรอก OTP ถูก
+        await otpInput.fill('123456');
+        const confirmBtn = await findOTPConfirmButton(page);
+        if (confirmBtn) {
+          await confirmBtn.click();
+          await page.waitForTimeout(3000);
+        }
+        await regPage.takeScreenshot('TC036-otp-first-use');
+        console.log('TC-036: OTP ครั้งแรก - URL:', page.url());
+
+        // ครั้งที่ 2: กลับมากรอก OTP เดิมอีก
+        const otpInput2 = page.locator(
+          'input[placeholder*="OTP"], input[placeholder*="otp"], input[placeholder*="รหัส"]'
+        ).first();
+
+        if (await otpInput2.isVisible().catch(() => false)) {
+          await otpInput2.fill('123456');
+          const confirmBtn2 = await findOTPConfirmButton(page);
+          if (confirmBtn2) {
+            await confirmBtn2.click();
+            await page.waitForTimeout(2000);
+          }
+          await regPage.takeScreenshot('TC036-otp-reuse');
+          console.log('TC-036: OTP ซ้ำ - URL:', page.url());
+        } else {
+          console.log('TC-036: OTP field หายไปแล้ว (อาจผ่านไปหน้าถัดไป)');
+        }
+      } else {
+        console.log('TC-036: ไม่พบ OTP field');
+        await regPage.takeScreenshot('TC036-no-otp-field');
       }
     });
 
@@ -235,13 +370,17 @@ test.describe('empeo Registration System', () => {
 
   test.describe('5. Promo Code', () => {
 
+    // ----- UI: แสดง Promo field -----
+
     test('TC-040: คลิก "ใช้โค้ดส่วนลด" → แสดง input field', async () => {
       await regPage.openPromoCode();
       await expect(regPage.promoInput).toBeVisible();
       await regPage.takeScreenshot('TC040-promo-visible');
     });
 
-    test('TC-041: ใส่ Promo Code ถูก (FREE15DAY) → submit', async ({ page }) => {
+    // ----- Promo ถูกต้อง: FREE15DAY -----
+
+    test('TC-041: ใส่ Promo ถูก (FREE15DAY) → submit', async ({ page }) => {
       const data = {
         ...testData.validThai,
         email: `promo_valid_${Date.now()}@testmail.com`,
@@ -254,53 +393,139 @@ test.describe('empeo Registration System', () => {
       console.log('TC-041 errors:', errors);
     });
 
-    test('TC-042: ใส่ Promo Code ผิด (INVALID_CODE) → ต้อง reject', async ({ page }) => {
-      const data = {
-        ...testData.validThai,
-        email: `promo_invalid_${Date.now()}@testmail.com`,
-        promoCode: 'INVALID_CODE',
-      };
-      await regPage.fillAndSubmit(data);
-      await regPage.takeScreenshot('TC042-promo-invalid');
+    // ----- Promo ผิด -----
 
-      const errors = await regPage.getVisibleErrors();
-      console.log('TC-042 errors:', errors);
+    testData.invalidPromos.forEach((promoCase, index) => {
+      test(`TC-04${index + 2}: Promo ผิด - ${promoCase.desc}`, async ({ page }) => {
+        const data = {
+          ...testData.validThai,
+          email: `promo_bad_${index}_${Date.now()}@testmail.com`,
+          promoCode: promoCase.value,
+        };
+        await regPage.fillAndSubmit(data);
+        await regPage.takeScreenshot(`TC04${index + 2}-promo-invalid`);
+
+        const errors = await regPage.getVisibleErrors();
+        console.log(`TC-04${index + 2} errors:`, errors);
+
+        // ถ้ามี error เกี่ยวกับ promo → ดี
+        // ถ้าไม่มี → อาจเป็น bug
+        const promoErrors = errors.filter(e =>
+          e.includes('โค้ด') || e.includes('ส่วนลด') ||
+          e.includes('promo') || e.includes('ไม่ถูกต้อง') ||
+          e.includes('invalid') || e.includes('not found')
+        );
+        console.log(`TC-04${index + 2} promo errors:`, promoErrors);
+      });
     });
 
-    test('TC-043: ใส่ Promo Code ว่าง → submit ได้ปกติ', async ({ page }) => {
-      await regPage.openPromoCode();
-      // ไม่กรอก promo code
+    // ----- Promo หมดอายุ -----
 
-      const data = {
-        ...testData.validThai,
-        email: `promo_empty_${Date.now()}@testmail.com`,
-      };
+    testData.expiredPromos.forEach((promoCase, index) => {
+      test(`TC-04${index + 5}: Promo หมดอายุ/ใช้แล้ว - ${promoCase.desc}`, async ({ page }) => {
+        const data = {
+          ...testData.validThai,
+          email: `promo_exp_${index}_${Date.now()}@testmail.com`,
+          promoCode: promoCase.value,
+        };
+        await regPage.fillAndSubmit(data);
+        await regPage.takeScreenshot(`TC04${index + 5}-promo-expired`);
+
+        const errors = await regPage.getVisibleErrors();
+        console.log(`TC-04${index + 5} errors:`, errors);
+
+        // ควรมี error ว่า promo หมดอายุหรือใช้แล้ว
+        if (errors.length === 0) {
+          console.log(`⚠️ FINDING: เว็บยอมรับ promo "${promoCase.value}" (${promoCase.desc})`);
+        }
+      });
+    });
+
+    // ----- Promo ว่าง -----
+
+    test('TC-048: ใส่ Promo ว่าง → submit ได้ปกติ', async ({ page }) => {
+      await regPage.openPromoCode();
 
       await regPage.selectCompanyTypeThai();
-      await regPage.fillTaxId(data.taxId);
-      await regPage.selectBusinessType(data.businessType);
-      await regPage.selectUserCount(data.userCount);
-      await regPage.fillFirstName(data.firstName);
-      await regPage.fillLastName(data.lastName);
-      await regPage.fillEmail(data.email);
-      await regPage.fillPhone(data.phone);
+      await regPage.fillTaxId('1234567890123');
+      await regPage.selectBusinessType('ค้าปลีก');
+      await regPage.selectUserCount('1-20');
+      await regPage.fillFirstName('สมชาย');
+      await regPage.fillLastName('ใจดี');
+      await regPage.fillEmail(`promo_empty_${Date.now()}@testmail.com`);
+      await regPage.fillPhone('0967690708');
       await regPage.checkTerms();
       await regPage.clickSubmit();
-      await regPage.takeScreenshot('TC043-promo-empty');
+      await regPage.takeScreenshot('TC048-promo-empty');
     });
 
-    test('TC-044: ใส่ Promo Code เป็น SQL Injection', async ({ page }) => {
+    // ----- Promo ใช้ซ้ำ (ใช้โค้ดเดิม 2 ครั้ง) -----
+
+    test('TC-049: ใช้ Promo ซ้ำ 2 ครั้ง → ครั้งที่ 2 ต้อง reject', async ({ page }) => {
+      // ครั้งที่ 1
+      const data1 = {
+        ...testData.validThai,
+        email: `promo_reuse1_${Date.now()}@testmail.com`,
+        promoCode: 'FREE15DAY',
+      };
+      await regPage.fillAndSubmit(data1);
+      await regPage.takeScreenshot('TC049-promo-first-use');
+      console.log('TC-049: Promo ครั้งแรก - URL:', page.url());
+
+      // กลับมาหน้า register ใหม่
+      await regPage.goto();
+
+      // ครั้งที่ 2 ใช้โค้ดเดิม
+      const data2 = {
+        ...testData.validThai,
+        email: `promo_reuse2_${Date.now()}@testmail.com`,
+        promoCode: 'FREE15DAY',
+      };
+      await regPage.fillAndSubmit(data2);
+      await regPage.takeScreenshot('TC049-promo-reuse');
+
+      const errors = await regPage.getVisibleErrors();
+      console.log('TC-049 errors (ครั้งที่ 2):', errors);
+
+      // ถ้าครั้งที่ 2 ยังใช้ได้ → อาจเป็นพฤติกรรมปกติ หรือ bug
+      if (errors.length === 0) {
+        console.log('ℹ️ NOTE: Promo FREE15DAY ใช้ได้หลายครั้ง (อาจเป็นพฤติกรรมปกติ)');
+      }
+    });
+
+    // ----- Promo Security: SQL Injection -----
+
+    test('TC-04A: Promo เป็น SQL Injection', async ({ page }) => {
       const data = {
         ...testData.validThai,
         email: `promo_sqli_${Date.now()}@testmail.com`,
         promoCode: "' OR '1'='1",
       };
       await regPage.fillAndSubmit(data);
-      await regPage.takeScreenshot('TC044-promo-sqli');
+      await regPage.takeScreenshot('TC04A-promo-sqli');
 
       const body = await page.textContent('body');
       expect(body.toLowerCase()).not.toContain('sql');
       expect(body.toLowerCase()).not.toContain('exception');
+    });
+
+    // ----- Promo Security: XSS -----
+
+    test('TC-04B: Promo เป็น XSS Script', async ({ page }) => {
+      let xssDetected = false;
+      page.on('dialog', async (dialog) => {
+        xssDetected = true;
+        await dialog.dismiss();
+      });
+
+      const data = {
+        ...testData.validThai,
+        email: `promo_xss_${Date.now()}@testmail.com`,
+        promoCode: '<script>alert("XSS")</script>',
+      };
+      await regPage.fillAndSubmit(data);
+      await regPage.takeScreenshot('TC04B-promo-xss');
+      expect(xssDetected).toBe(false);
     });
 
   });

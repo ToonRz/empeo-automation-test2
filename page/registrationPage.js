@@ -1,4 +1,3 @@
-// pages/registrationPage.js
 class RegistrationPage {
 
   constructor(page) {
@@ -150,7 +149,7 @@ class RegistrationPage {
         .first().click({ force: true });
       await this.page.waitForTimeout(500);
     } catch {
-      console.log(`⚠️ ไม่สามารถเลือก "${optionText}" ได้`);
+      console.log(`ไม่สามารถเลือก "${optionText}" ได้`);
     }
   }
 

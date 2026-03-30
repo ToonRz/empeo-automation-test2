@@ -1,5 +1,4 @@
 // test-data/testData.js
-// ใช้ Test Data ตามที่โจทย์ fix ให้!
 
 const testData = {
 
@@ -73,10 +72,16 @@ const testData = {
 
   // ===== Promo Code ผิด =====
   invalidPromos: [
-    { value: 'INVALID_CODE', desc: 'โค้ดไม่มีอยู่' },
+    { value: 'INVALID_CODE', desc: 'โค้ดไม่มีอยู่จริง' },
     { value: '12345', desc: 'โค้ดเป็นตัวเลข' },
-    { value: '', desc: 'ว่างเปล่า' },
-    { value: 'FREE15DAY FREE15DAY', desc: 'ใส่ซ้ำ' },
+    { value: 'FREE15DAY FREE15DAY', desc: 'ใส่ซ้ำ 2 รอบ' },
+  ],
+
+  // ===== Promo ที่หมดอายุ / ใช้แล้ว =====
+  expiredPromos: [
+    { value: 'EXPIRED2023', desc: 'โค้ดหมดอายุ' },
+    { value: 'USED_ALREADY', desc: 'โค้ดถูกใช้แล้ว' },
+    { value: 'OLD_PROMO_001', desc: 'โค้ดเก่าที่ปิดไปแล้ว' },
   ],
 
   // ===== OTP ผิด =====
