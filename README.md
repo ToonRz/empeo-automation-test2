@@ -5,7 +5,6 @@
 
 ## 1) Test Case Design
 
-ด้านล่างคือ coverage หลักที่ออกแบบไว้ :
 
 | Area | Test IDs | Notes |
 |---|---|---|
