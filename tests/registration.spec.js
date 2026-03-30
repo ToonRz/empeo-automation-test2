@@ -6,11 +6,34 @@ const { testData } = require('../test-data/testData');
 test.describe('empeo Registration System', () => {
 
   let regPage;
+  const otpInputSelector = 'input[placeholder*="OTP"], input[placeholder*="otp"], input[placeholder*="รหัส"]';
+  const otpErrorSelector = '[class*="error"], .ant-form-item-explain-error, [role="alert"]';
 
   test.beforeEach(async ({ page }) => {
     regPage = new RegistrationPage(page);
     await regPage.goto();
   });
+
+  async function isOtpStepVisible(page) {
+    const otpInput = page.locator(otpInputSelector);
+    return otpInput.first().isVisible().catch(() => false);
+  }
+
+  async function expectSubmissionProgressed(page) {
+    const otpVisible = await isOtpStepVisible(page);
+    const currentUrl = page.url();
+    expect(
+      otpVisible || !/Register\/empeo/i.test(currentUrl),
+      `Expected to move to OTP/success step, but still on ${currentUrl}`
+    ).toBe(true);
+  }
+
+  async function expectOtpErrorVisible(page) {
+    const otpError = page.locator(otpErrorSelector)
+      .filter({ hasText: /otp|รหัส|ไม่ถูกต้อง|invalid|หมดอายุ|expired/i })
+      .first();
+    await expect(otpError).toBeVisible();
+  }
 
   // ============================================================
   // SECTION 1: PAGE LOAD & UI
@@ -91,9 +114,7 @@ test.describe('empeo Registration System', () => {
       };
       await regPage.fillAndSubmit(data);
       await regPage.takeScreenshot('TC020-result');
-
-      const errors = await regPage.getVisibleErrors();
-      console.log('TC-020 errors:', errors);
+      await expectSubmissionProgressed(page);
     });
 
     test('TC-021: สมัครสำเร็จ - บริษัทต่างประเทศ', async ({ page }) => {
@@ -103,9 +124,7 @@ test.describe('empeo Registration System', () => {
       };
       await regPage.fillAndSubmit(data);
       await regPage.takeScreenshot('TC021-result');
-
-      const errors = await regPage.getVisibleErrors();
-      console.log('TC-021 errors:', errors);
+      await expectSubmissionProgressed(page);
     });
 
     test('TC-022: สมัครสำเร็จ - พร้อม Promo Code FREE15DAY', async ({ page }) => {
@@ -115,9 +134,7 @@ test.describe('empeo Registration System', () => {
       };
       await regPage.fillAndSubmit(data);
       await regPage.takeScreenshot('TC022-result');
-
-      const errors = await regPage.getVisibleErrors();
-      console.log('TC-022 errors:', errors);
+      await expectSubmissionProgressed(page);
     });
 
   });
@@ -142,13 +159,14 @@ test.describe('empeo Registration System', () => {
       console.log('TC-030 URL after submit:', currentUrl);
 
       // หา OTP input field
-      const otpInput = page.locator('input[placeholder*="OTP"], input[placeholder*="otp"], input[placeholder*="รหัส"]');
-      const otpVisible = await otpInput.isVisible().catch(() => false);
+      const otpInput = page.locator(otpInputSelector);
+      const otpVisible = await otpInput.first().isVisible().catch(() => false);
       console.log('TC-030 OTP field visible:', otpVisible);
+      await expect(otpVisible).toBe(true);
 
       // ถ้ามี OTP field → กรอก 123456
       if (otpVisible) {
-        await otpInput.fill('123456');
+        await otpInput.first().fill('123456');
         await regPage.takeScreenshot('TC030-otp-filled');
       }
     });
@@ -163,11 +181,12 @@ test.describe('empeo Registration System', () => {
       await page.waitForTimeout(3000);
 
       // หา OTP field
-      const otpInput = page.locator('input[placeholder*="OTP"], input[placeholder*="otp"], input[placeholder*="รหัส"]');
-      const otpVisible = await otpInput.isVisible().catch(() => false);
+      const otpInput = page.locator(otpInputSelector);
+      const otpVisible = await otpInput.first().isVisible().catch(() => false);
+      await expect(otpVisible).toBe(true);
 
       if (otpVisible) {
-        await otpInput.fill('000000');
+        await otpInput.first().fill('000000');
         // หาปุ่มยืนยัน OTP
         const confirmBtn = page.locator('button').filter({ hasText: /ยืนยัน|confirm|verify/i });
         if (await confirmBtn.isVisible().catch(() => false)) {
@@ -176,8 +195,7 @@ test.describe('empeo Registration System', () => {
         }
         await regPage.takeScreenshot('TC031-wrong-otp');
         console.log('TC-031: OTP ผิดถูกส่งแล้ว');
-      } else {
-        console.log('TC-031: ไม่พบ OTP field (อาจยัง submit ไม่ผ่าน)');
+        await expectOtpErrorVisible(page);
       }
     });
 
@@ -190,15 +208,15 @@ test.describe('empeo Registration System', () => {
       await regPage.fillAndSubmit(data);
       await page.waitForTimeout(3000);
 
-      const otpInput = page.locator('input[placeholder*="OTP"], input[placeholder*="otp"], input[placeholder*="รหัส"]');
-      const otpVisible = await otpInput.isVisible().catch(() => false);
+      const otpInput = page.locator(otpInputSelector);
+      const otpVisible = await otpInput.first().isVisible().catch(() => false);
+      await expect(otpVisible).toBe(true);
 
       if (otpVisible) {
-        await otpInput.fill('123');
+        await otpInput.first().fill('123');
         await regPage.takeScreenshot('TC032-short-otp');
         console.log('TC-032: OTP สั้นถูกกรอกแล้ว');
-      } else {
-        console.log('TC-032: ไม่พบ OTP field');
+        await expectOtpErrorVisible(page);
       }
     });
 
@@ -211,8 +229,9 @@ test.describe('empeo Registration System', () => {
       await regPage.fillAndSubmit(data);
       await page.waitForTimeout(3000);
 
-      const otpInput = page.locator('input[placeholder*="OTP"], input[placeholder*="otp"], input[placeholder*="รหัส"]');
-      const otpVisible = await otpInput.isVisible().catch(() => false);
+      const otpInput = page.locator(otpInputSelector);
+      const otpVisible = await otpInput.first().isVisible().catch(() => false);
+      await expect(otpVisible).toBe(true);
 
       if (otpVisible) {
         // ไม่กรอกอะไร กดยืนยันเลย
@@ -222,9 +241,31 @@ test.describe('empeo Registration System', () => {
           await page.waitForTimeout(2000);
         }
         await regPage.takeScreenshot('TC033-empty-otp');
-      } else {
-        console.log('TC-033: ไม่พบ OTP field');
+        await expectOtpErrorVisible(page);
       }
+    });
+
+    test('TC-034: OTP หมดอายุ (รอให้ timeout) → ต้องแสดง error', async ({ page }) => {
+      const data = {
+        ...testData.validThai,
+        phone: '0967690708',
+        email: `otp_expired_${Date.now()}@testmail.com`,
+      };
+      await regPage.fillAndSubmit(data);
+      await expect(isOtpStepVisible(page)).resolves.toBe(true);
+
+      // หมายเหตุ: เวลาหมดอายุขึ้นกับระบบจริง ใช้เวลารอเพื่อทดสอบ behavior
+      await page.waitForTimeout(65000);
+      const otpInput = page.locator(otpInputSelector).first();
+      await otpInput.fill('123456');
+
+      const confirmBtn = page.locator('button').filter({ hasText: /ยืนยัน|confirm|verify/i }).first();
+      if (await confirmBtn.isVisible().catch(() => false)) {
+        await confirmBtn.click();
+      }
+      await page.waitForTimeout(2000);
+      await regPage.takeScreenshot('TC034-expired-otp');
+      await expectOtpErrorVisible(page);
     });
 
   });
@@ -301,6 +342,38 @@ test.describe('empeo Registration System', () => {
       const body = await page.textContent('body');
       expect(body.toLowerCase()).not.toContain('sql');
       expect(body.toLowerCase()).not.toContain('exception');
+    });
+
+    test('TC-045: ใช้ Promo Code เดิมซ้ำ 2 ครั้ง → ระบบต้อง handle อย่างถูกต้อง', async ({ page, browser }) => {
+      const email1 = `promo_reuse_1_${Date.now()}@testmail.com`;
+      const email2 = `promo_reuse_2_${Date.now()}@testmail.com`;
+
+      await regPage.fillAndSubmit({
+        ...testData.validWithPromo,
+        email: email1,
+        promoCode: testData.fixedPromo,
+      });
+      await regPage.takeScreenshot('TC045-first-use');
+      await expectSubmissionProgressed(page);
+
+      const ctx2 = await browser.newContext();
+      const page2 = await ctx2.newPage();
+      const regPage2 = new RegistrationPage(page2);
+      await regPage2.goto();
+      await regPage2.fillAndSubmit({
+        ...testData.validWithPromo,
+        email: email2,
+        promoCode: testData.fixedPromo,
+      });
+      await regPage2.takeScreenshot('TC045-second-use');
+
+      const secondErrors = await regPage2.getVisibleErrors();
+      const progressed = (await isOtpStepVisible(page2)) || !/Register\/empeo/i.test(page2.url());
+      expect(
+        progressed || secondErrors.length > 0,
+        'Expected system to provide deterministic result for reused promo code'
+      ).toBe(true);
+      await ctx2.close();
     });
 
   });
